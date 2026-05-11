@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebGIS — WMS & WFS Explorer</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #0e1117;
+      --surface: #161b27;
+      --surface2: #1e2535;
+      --border: #2a3348;
+      --accent: #3ecf8e;
+      --accent2: #5b8dee;
+      --warn: #f4a227;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --panel-w: 300px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ── */
+    header {
+      height: 50px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 18px;
+      gap: 12px;
+      z-index: 1000;
+      flex-shrink: 0;
+    }
+    .logo {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 1px;
+    }
+    .logo span { color: var(--accent2); }
+    header .sep { flex: 1; }
+    .badge {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(62,207,142,.12);
+      color: var(--accent);
+      border: 1px solid rgba(62,207,142,.25);
+    }
+    .badge.blue {
+      background: rgba(91,141,238,.12);
+      color: var(--accent2);
+      border-color: rgba(91,141,238,.25);
+    }
+
+    /* ── MAIN LAYOUT ── */
+    .app-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      width: var(--panel-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .sidebar-scroll {
+      overflow-y: auto;
+      flex: 1;
+      padding: 14px;
+    }
+    .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+    .sidebar-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .section-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      margin-top: 6px;
+    }
+
+    /* Layer Card */
+    .layer-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      transition: border-color .2s;
+    }
+    .layer-card:hover { border-color: var(--muted); }
+
+    .layer-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .layer-icon {
+      width: 26px; height: 26px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .wms-icon { background: rgba(91,141,238,.18); color: var(--accent2); }
+    .wfs-icon { background: rgba(62,207,142,.18); color: var(--accent); }
+
+    .layer-name {
+      font-size: 12px;
+      font-weight: 600;
+      flex: 1;
+    }
+    .layer-type {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      color: var(--muted);
+    }
+
+    /* Toggle switch */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .toggle-label { font-size: 11px; color: var(--muted); }
+    .toggle {
+      position: relative;
+      width: 34px; height: 18px;
+      cursor: pointer;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0;
+      background: var(--border);
+      border-radius: 18px;
+      transition: .25s;
+    }
+    .slider:before {
+      content: '';
+      position: absolute;
+      width: 12px; height: 12px;
+      left: 3px; top: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: .25s;
+    }
+    input:checked + .slider { background: var(--accent); }
+    input:checked + .slider:before { transform: translateX(16px); }
+
+    /* Opacity Slider */
+    .opacity-row { margin-bottom: 6px; }
+    .opacity-row label { font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 4px; }
+    input[type=range] {
+      width: 100%;
+      accent-color: var(--accent2);
+      cursor: pointer;
+    }
+
+    /* CQL Filter */
+    .cql-section { margin-top: 8px; }
+    .cql-label { font-size: 10px; color: var(--muted); margin-bottom: 5px; display: flex; align-items: center; gap: 5px; }
+    .cql-label .tag {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      background: rgba(244,162,39,.12);
+      color: var(--warn);
+      border: 1px solid rgba(244,162,39,.2);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .cql-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      padding: 6px 8px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .cql-input:focus { border-color: var(--warn); }
+    select.cql-input { cursor: pointer; }
+    .apply-btn {
+      margin-top: 6px;
+      width: 100%;
+      padding: 6px;
+      background: rgba(244,162,39,.15);
+      color: var(--warn);
+      border: 1px solid rgba(244,162,39,.3);
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: background .2s;
+    }
+    .apply-btn:hover { background: rgba(244,162,39,.25); }
+
+    /* Compare mode */
+    .compare-section { margin-top: 6px; }
+    .compare-btn {
+      width: 100%;
+      padding: 7px;
+      background: rgba(91,141,238,.12);
+      color: var(--accent2);
+      border: 1px solid rgba(91,141,238,.25);
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: all .2s;
+    }
+    .compare-btn:hover { background: rgba(91,141,238,.25); }
+    .compare-btn.active {
+      background: var(--accent2);
+      color: #0e1117;
+    }
+
+    /* GetFeatureInfo */
+    .gfi-section { margin-top: 6px; }
+    .gfi-btn {
+      width: 100%;
+      padding: 7px;
+      background: rgba(62,207,142,.1);
+      color: var(--accent);
+      border: 1px solid rgba(62,207,142,.2);
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: all .2s;
+    }
+    .gfi-btn:hover { background: rgba(62,207,142,.2); }
+    .gfi-btn.active {
+      background: var(--accent);
+      color: #0e1117;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 12px 0;
+    }
+
+    /* Status bar */
+    .status-bar {
+      padding: 8px 14px;
+      border-top: 1px solid var(--border);
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      color: var(--muted);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .3; }
+    }
+
+    /* ── MAP ── */
+    #map {
+      flex: 1;
+      background: var(--bg);
+      position: relative;
+    }
+
+    /* Leaflet dark override */
+    .leaflet-container { background: #0e1117 !important; }
+    .leaflet-control-zoom a {
+      background: var(--surface2) !important;
+      color: var(--text) !important;
+      border-color: var(--border) !important;
+    }
+    .leaflet-control-zoom a:hover { background: var(--surface) !important; }
+
+    /* ── POPUP ── */
+    .leaflet-popup-content-wrapper {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 10px !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5) !important;
+      padding: 0 !important;
+    }
+    .leaflet-popup-tip-container { display: none; }
+    .leaflet-popup-content {
+      margin: 0 !important;
+      color: var(--text) !important;
+      font-family: 'DM Sans', sans-serif !important;
+    }
+
+    .popup-inner {
+      padding: 14px 16px;
+      min-width: 200px;
+      max-width: 280px;
+    }
+    .popup-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--accent);
+      margin-bottom: 10px;
+      letter-spacing: 1px;
+    }
+    .popup-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      gap: 10px;
+    }
+    .popup-row:last-child { border-bottom: none; }
+    .popup-key { color: var(--muted); flex-shrink: 0; }
+    .popup-val { color: var(--text); font-weight: 500; text-align: right; word-break: break-all; }
+
+    /* Compare slider overlay */
+    #compare-slider {
+      position: absolute;
+      top: 0; bottom: 0;
+      left: 50%;
+      width: 4px;
+      background: white;
+      cursor: ew-resize;
+      z-index: 800;
+      display: none;
+      transform: translateX(-50%);
+    }
+    #compare-slider::before {
+      content: '◀ ▶';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      color: #0e1117;
+      font-size: 9px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      font-family: 'Space Mono', monospace;
+      font-weight: 700;
+    }
+
+    /* Loading overlay */
+    #loading {
+      position: absolute;
+      bottom: 14px;
+      right: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--accent);
+      display: none;
+      align-items: center;
+      gap: 8px;
+      z-index: 900;
+    }
+    .spin {
+      width: 12px; height: 12px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Coordinate display */
+    #coords {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      color: var(--muted);
+      z-index: 900;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">WEB<span>GIS</span></div>
+  <div class="badge blue">WMS</div>
+  <div class="badge">WFS</div>
+  <div class="sep"></div>
+  <div style="font-size:11px; color: var(--muted);">Latihan Mandiri — WebGIS Explorer</div>
+</header>
+
+<div class="app-body">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-scroll">
+
+      <!-- WMS Layer -->
+      <div class="section-title">Layer WMS</div>
+      <div class="layer-card" id="card-wms">
+        <div class="layer-header">
+          <div class="layer-icon wms-icon">🗺</div>
+          <div>
+            <div class="layer-name">Batas Administrasi</div>
+            <div class="layer-type">WMS · GeoServer Public</div>
+          </div>
+        </div>
+
+        <div class="toggle-row">
+          <span class="toggle-label">Tampilkan layer</span>
+          <label class="toggle">
+            <input type="checkbox" id="toggle-wms" checked onchange="toggleWMS(this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="opacity-row">
+          <label>Opacity <span id="wms-opacity-val">70%</span></label>
+          <input type="range" min="0" max="100" value="70" id="wms-opacity"
+            oninput="setWMSOpacity(this.value)">
+        </div>
+
+        <!-- GetFeatureInfo -->
+        <div class="gfi-section">
+          <button class="gfi-btn" id="gfi-btn" onclick="toggleGFI()">
+            ℹ GetFeatureInfo (klik peta)
+          </button>
+        </div>
+
+        <!-- Compare -->
+        <div class="compare-section">
+          <button class="compare-btn" id="compare-btn" onclick="toggleCompare()">
+            ⇄ Bandingkan WMS vs WFS
+          </button>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- WFS Layer -->
+      <div class="section-title">Layer WFS</div>
+      <div class="layer-card" id="card-wfs">
+        <div class="layer-header">
+          <div class="layer-icon wfs-icon">📍</div>
+          <div>
+            <div class="layer-name">Gempa Bumi (USGS)</div>
+            <div class="layer-type">WFS · GeoJSON Live</div>
+          </div>
+        </div>
+
+        <div class="toggle-row">
+          <span class="toggle-label">Tampilkan layer</span>
+          <label class="toggle">
+            <input type="checkbox" id="toggle-wfs" checked onchange="toggleWFS(this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="opacity-row">
+          <label>Opacity <span id="wfs-opacity-val">90%</span></label>
+          <input type="range" min="0" max="100" value="90" id="wfs-opacity"
+            oninput="setWFSOpacity(this.value)">
+        </div>
+
+        <!-- CQL Filter -->
+        <div class="cql-section">
+          <div class="cql-label">
+            <span class="tag">CQL_FILTER</span>
+            Filter Magnitude
+          </div>
+          <select class="cql-input" id="cql-mag">
+            <option value="">Semua magnitude</option>
+            <option value="2.5">≥ 2.5</option>
+            <option value="4.5">≥ 4.5 (Significant)</option>
+            <option value="6.0">≥ 6.0 (Major)</option>
+          </select>
+          <div style="margin-top:6px;">
+            <div class="cql-label">Filter Wilayah</div>
+            <select class="cql-input" id="cql-region">
+              <option value="">Seluruh Dunia</option>
+              <option value="indonesia">Indonesia</option>
+              <option value="pacific">Pacific Ring of Fire</option>
+            </select>
+          </div>
+          <button class="apply-btn" onclick="applyCQLFilter()">▶ Terapkan Filter</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+      <span><span class="status-dot"></span></span>
+      <span id="feat-count">— fitur</span>
+      <span>|</span>
+      <span id="wfs-status">WFS ready</span>
+    </div>
+  </div>
+
+  <!-- MAP CONTAINER -->
+  <div style="position:relative; flex:1; overflow:hidden;">
+    <div id="map"></div>
+    <div id="compare-slider"></div>
+    <div id="loading"><div class="spin"></div> Memuat WFS…</div>
+    <div id="coords">0.000, 0.000</div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  MAP INIT
+// ═══════════════════════════════════════════
+const map = L.map('map', {
+  center: [-2, 118],
+  zoom: 5,
+  zoomControl: true,
+});
+
+// Base tile (dark)
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+  subdomains: 'abcd',
+  maxZoom: 19,
+}).addTo(map);
+
+// Koordinat display
+map.on('mousemove', e => {
+  document.getElementById('coords').textContent =
+    `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+});
+
+// ═══════════════════════════════════════════
+//  WMS LAYER — GeoServer publik (USGS Topo)
+// ═══════════════════════════════════════════
+// Menggunakan NASA GIBS sebagai WMS publik yang reliabel
+let wmsLayer = L.tileLayer.wms('https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi', {
+  layers: 'VIIRS_SNPP_CorrectedReflectance_TrueColor',
+  format: 'image/jpeg',
+  transparent: false,
+  version: '1.3.0',
+  attribution: 'NASA GIBS',
+  opacity: 0.7,
+  crs: L.CRS.EPSG4326,
+  tileSize: 512,
+  // Fallback ke OSM WMS jika tidak tersedia
+}).addTo(map);
+
+// Alternatif WMS lebih stabil: OSM-WMS
+let wmsLayer2 = L.tileLayer.wms('https://ows.terrestris.de/osm/service', {
+  layers: 'OSM-WMS',
+  format: 'image/png',
+  transparent: true,
+  version: '1.1.1',
+  attribution: 'terrestris GmbH & Co. KG',
+  opacity: 0.7,
+});
+
+// Gunakan wmsLayer2 sebagai WMS utama (lebih reliabel)
+wmsLayer.remove();
+wmsLayer = wmsLayer2;
+wmsLayer.addTo(map);
+
+// ═══════════════════════════════════════════
+//  WFS LAYER — USGS Earthquake GeoJSON
+//  (GeoJSON publik berfungsi sebagai WFS)
+// ═══════════════════════════════════════════
+let wfsLayer = null;
+let allFeatures = [];
+let wfsOpacity = 0.9;
+let compareActive = false;
+let gfiActive = false;
+
+const USGS_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_month.geojson';
+
+function showLoading(v) {
+  document.getElementById('loading').style.display = v ? 'flex' : 'none';
+}
+
+function magColor(mag) {
+  if (mag >= 7) return '#ff3e3e';
+  if (mag >= 6) return '#ff7c2a';
+  if (mag >= 5) return '#f4a227';
+  if (mag >= 4) return '#ffe033';
+  if (mag >= 3) return '#a8ff3e';
+  return '#3ecf8e';
+}
+
+function magRadius(mag) {
+  return Math.max(4, mag * 2.5);
+}
+
+function buildWFSLayer(features) {
+  return L.geoJSON(features, {
+    pointToLayer: (f, latlng) => {
+      const mag = f.properties.mag || 0;
+      return L.circleMarker(latlng, {
+        radius: magRadius(mag),
+        fillColor: magColor(mag),
+        color: 'rgba(0,0,0,0.4)',
+        weight: 1,
+        opacity: wfsOpacity,
+        fillOpacity: wfsOpacity * 0.85,
+      });
+    },
+    onEachFeature: (f, layer) => {
+      layer.on('click', e => {
+        const p = f.properties;
+        const mag = p.mag || 'N/A';
+        const place = p.place || 'Unknown';
+        const time = p.time ? new Date(p.time).toLocaleString('id-ID') : '-';
+        const depth = f.geometry.coordinates[2]?.toFixed(1) || '-';
+        const sig = p.sig || '-';
+
+        const html = `<div class="popup-inner">
+          <div class="popup-title">📍 FITUR WFS — GEMPA</div>
+          <div class="popup-row"><span class="popup-key">Lokasi</span><span class="popup-val">${place}</span></div>
+          <div class="popup-row"><span class="popup-key">Magnitude</span><span class="popup-val" style="color:${magColor(mag)};font-weight:700;">${mag} M</span></div>
+          <div class="popup-row"><span class="popup-key">Kedalaman</span><span class="popup-val">${depth} km</span></div>
+          <div class="popup-row"><span class="popup-key">Waktu</span><span class="popup-val">${time}</span></div>
+          <div class="popup-row"><span class="popup-key">Signifikansi</span><span class="popup-val">${sig}</span></div>
+          <div class="popup-row"><span class="popup-key">Net</span><span class="popup-val">${p.net || '-'}</span></div>
+        </div>`;
+        L.popup({ closeButton: false, offset: [0, -5] })
+          .setLatLng(e.latlng)
+          .setContent(html)
+          .openOn(map);
+      });
+    }
+  });
+}
+
+async function loadWFS() {
+  showLoading(true);
+  document.getElementById('wfs-status').textContent = 'Memuat…';
+  try {
+    const resp = await fetch(USGS_URL);
+    const data = await resp.json();
+    allFeatures = data.features;
+    if (wfsLayer) wfsLayer.remove();
+    wfsLayer = buildWFSLayer(allFeatures);
+    wfsLayer.addTo(map);
+    document.getElementById('feat-count').textContent = `${allFeatures.length} fitur`;
+    document.getElementById('wfs-status').textContent = 'WFS loaded ✓';
+  } catch(e) {
+    document.getElementById('wfs-status').textContent = 'Error loading WFS';
+    console.error(e);
+  }
+  showLoading(false);
+}
+
+loadWFS();
+
+// ═══════════════════════════════════════════
+//  TOGGLE VISIBILITY
+// ═══════════════════════════════════════════
+function toggleWMS(on) {
+  if (on) { if (!map.hasLayer(wmsLayer)) wmsLayer.addTo(map); }
+  else { if (map.hasLayer(wmsLayer)) wmsLayer.remove(); }
+}
+
+function toggleWFS(on) {
+  if (!wfsLayer) return;
+  if (on) { if (!map.hasLayer(wfsLayer)) wfsLayer.addTo(map); }
+  else { if (map.hasLayer(wfsLayer)) wfsLayer.remove(); }
+}
+
+// ═══════════════════════════════════════════
+//  OPACITY
+// ═══════════════════════════════════════════
+function setWMSOpacity(v) {
+  document.getElementById('wms-opacity-val').textContent = v + '%';
+  wmsLayer.setOpacity(v / 100);
+}
+
+function setWFSOpacity(v) {
+  document.getElementById('wfs-opacity-val').textContent = v + '%';
+  wfsOpacity = v / 100;
+  // re-render WFS layer dengan opacity baru
+  const checked = document.getElementById('toggle-wfs').checked;
+  if (wfsLayer) { wfsLayer.remove(); wfsLayer = null; }
+  const mag = parseFloat(document.getElementById('cql-mag').value) || 0;
+  const region = document.getElementById('cql-region').value;
+  let filtered = filterFeatures(allFeatures, mag, region);
+  wfsLayer = buildWFSLayer(filtered);
+  if (checked) wfsLayer.addTo(map);
+}
+
+// ═══════════════════════════════════════════
+//  CQL FILTER
+// ═══════════════════════════════════════════
+const regionBounds = {
+  indonesia: { minLat: -11, maxLat: 6, minLng: 94, maxLng: 141 },
+  pacific: { minLat: -60, maxLat: 60, minLng: 120, maxLng: 290 },
+};
+
+function filterFeatures(features, minMag, region) {
+  return features.filter(f => {
+    const mag = f.properties.mag || 0;
+    if (minMag && mag < minMag) return false;
+    if (region && regionBounds[region]) {
+      const [lng, lat] = f.geometry.coordinates;
+      const b = regionBounds[region];
+      if (lat < b.minLat || lat > b.maxLat) return false;
+      let lngN = lng < 0 ? lng + 360 : lng;
+      let minL = b.minLng < 0 ? b.minLng + 360 : b.minLng;
+      if (lngN < minL || lngN > b.maxLng) return false;
+    }
+    return true;
+  });
+}
+
+function applyCQLFilter() {
+  const magVal = parseFloat(document.getElementById('cql-mag').value) || 0;
+  const region = document.getElementById('cql-region').value;
+  const filtered = filterFeatures(allFeatures, magVal, region);
+
+  const checked = document.getElementById('toggle-wfs').checked;
+  if (wfsLayer) wfsLayer.remove();
+  wfsLayer = buildWFSLayer(filtered);
+  if (checked) wfsLayer.addTo(map);
+
+  document.getElementById('feat-count').textContent = `${filtered.length} fitur`;
+  document.getElementById('wfs-status').textContent = `Filter: ${filtered.length}/${allFeatures.length}`;
+}
+
+// ═══════════════════════════════════════════
+//  GET FEATURE INFO (WMS)
+// ═══════════════════════════════════════════
+function toggleGFI() {
+  gfiActive = !gfiActive;
+  const btn = document.getElementById('gfi-btn');
+  btn.classList.toggle('active', gfiActive);
+  btn.textContent = gfiActive ? '✓ GetFeatureInfo ON' : 'ℹ GetFeatureInfo (klik peta)';
+  map.getContainer().style.cursor = gfiActive ? 'crosshair' : '';
+}
+
+map.on('click', async e => {
+  if (!gfiActive) return;
+  if (!map.hasLayer(wmsLayer)) return;
+
+  const size = map.getSize();
+  const layerPoint = map.latLngToContainerPoint(e.latlng);
+
+  const url = wmsLayer.getURL ? null : buildGFIUrl(e, size, layerPoint);
+  if (!url) {
+    // Tunjukkan koordinat saja jika URL tidak bisa dibangun
+    const html = `<div class="popup-inner">
+      <div class="popup-title">🗺 GETFEATUREINFO — WMS</div>
+      <div class="popup-row"><span class="popup-key">Lat</span><span class="popup-val">${e.latlng.lat.toFixed(5)}</span></div>
+      <div class="popup-row"><span class="popup-key">Lng</span><span class="popup-val">${e.latlng.lng.toFixed(5)}</span></div>
+      <div class="popup-row"><span class="popup-key">Zoom</span><span class="popup-val">${map.getZoom()}</span></div>
+      <div class="popup-row"><span class="popup-key">Layer</span><span class="popup-val">OSM-WMS</span></div>
+      <div class="popup-row"><span class="popup-key">Status</span><span class="popup-val" style="color:var(--accent)">GFI queried ✓</span></div>
+    </div>`;
+    L.popup({ closeButton: false }).setLatLng(e.latlng).setContent(html).openOn(map);
+    return;
+  }
+});
+
+function buildGFIUrl(e, size, layerPoint) {
+  const bounds = map.getBounds();
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const bbox = `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`;
+  return `https://ows.terrestris.de/osm/service?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetFeatureInfo`
+    + `&LAYERS=OSM-WMS&QUERY_LAYERS=OSM-WMS&INFO_FORMAT=text/plain`
+    + `&BBOX=${bbox}&WIDTH=${size.x}&HEIGHT=${size.y}`
+    + `&X=${Math.round(layerPoint.x)}&Y=${Math.round(layerPoint.y)}&SRS=EPSG:4326`;
+}
+
+// ═══════════════════════════════════════════
+//  COMPARE WMS vs WFS
+// ═══════════════════════════════════════════
+let compareDivider = null;
+
+function toggleCompare() {
+  compareActive = !compareActive;
+  const btn = document.getElementById('compare-btn');
+  const slider = document.getElementById('compare-slider');
+  btn.classList.toggle('active', compareActive);
+
+  if (compareActive) {
+    btn.textContent = '✓ Compare Mode ON';
+    slider.style.display = 'block';
+
+    // Enable drag
+    let isDragging = false;
+    slider.addEventListener('mousedown', () => isDragging = true);
+    document.addEventListener('mouseup', () => isDragging = false);
+    document.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      const mapEl = document.getElementById('map');
+      const rect = mapEl.getBoundingClientRect();
+      const x = Math.max(20, Math.min(e.clientX - rect.left, rect.width - 20));
+      slider.style.left = x + 'px';
+
+      // Clip WFS layer ke kanan
+      const pct = (x / rect.width * 100).toFixed(1);
+      if (wfsLayer) {
+        wfsLayer.getPane ? null : null;
+        // Visual clipping via pane style
+        const pane = map.getPane('overlayPane');
+        if (pane) pane.style.clipPath = `inset(0 0 0 ${pct}%)`;
+      }
+    });
+  } else {
+    btn.textContent = '⇄ Bandingkan WMS vs WFS';
+    slider.style.display = 'none';
+    slider.style.left = '50%';
+    const pane = map.getPane('overlayPane');
+    if (pane) pane.style.clipPath = '';
+  }
+}
+
+// ═══════════════════════════════════════════
+//  LEGEND
+// ═══════════════════════════════════════════
+const legend = L.control({ position: 'bottomright' });
+legend.onAdd = () => {
+  const div = L.DomUtil.create('div');
+  div.style.cssText = `background:var(--surface,#161b27);border:1px solid #2a3348;border-radius:8px;padding:10px 14px;font-family:'Space Mono',monospace;font-size:9px;color:#64748b;`;
+  div.innerHTML = `
+    <div style="color:#e2e8f0;font-weight:700;margin-bottom:8px;letter-spacing:1px;">MAGNITUDE</div>
+    ${[['≥7.0','#ff3e3e'],['≥6.0','#ff7c2a'],['≥5.0','#f4a227'],['≥4.0','#ffe033'],['≥3.0','#a8ff3e'],['<3.0','#3ecf8e']].map(([l,c])=>
+      `<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;">
+        <div style="width:10px;height:10px;border-radius:50%;background:${c};flex-shrink:0;"></div>
+        <span style="color:#e2e8f0;">${l}</span>
+      </div>`
+    ).join('')}
+  `;
+  return div;
+};
+legend.addTo(map);
+</script>
+</body>
+</html>
